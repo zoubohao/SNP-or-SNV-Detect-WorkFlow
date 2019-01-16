@@ -1,0 +1,132 @@
+### 一、测序数据的质量控制
+
+
+
+# fastqc 直接生成报告：
+fastqc reads.fastq 
+
+
+
+##trimmo去除测序质量低的序列和接头序列（分PE（pair end ）和SE(single end)模式）-phred33 -phred64代表测序质量，现在一般用33：
+
+PE   :   java -jar trimmomatic.jar PE -phred33 ../WGS_Work_Flow/ReadsData/R1.fastq  ../WGS_Work_Flow/ReadsData/R2.fastq  ../WGS_Work_Flow/ReadsData/outR1.fastq.gz  ../WGS_Work_Flow/ReadsData/outR1Trimm.fastq.gz  ../WGS_Work_Flow/ReadsData/outR2.fastq.gz  ../WGS_Work_Flow/ReadsData/outR2Trimm.fastq.gz  ILLUMINACLIP:adapters/TruSeq3-PE.fa:2:30:10 SLIDINGWINDOW:5:20 LEADING:5 TRAILING:5 MINLEN:50 
+
+SE   :   java -jar trimmomatic.jar SE -phred33 ../WGS_Work_Flow/ReadsData/R1.fastq   ../WGS_Work_Flow/ReadsData/outR1.fastq.gz ILLUMINACLIP:adapters/TruSeq3-SE.fa:2:30:10 SLIDINGWINDOW:5:20 LEADING:5 TRAILING:5 MINLEN:50 
+
+
+
+### #序列比对和索引建立
+
+# 建立人类染色体的索引
+bwa index HumenChromos.fasta
+
+# 将经过质量控制的reads映射到基因组上并输出BAM文件
+bwa mem -t 4 -R '@RG\tID:sra_data\tPL:illumina\tLB:Non\tSM:humen' ~/WGS_Work_Flow/ChromeIndexFiles/GRCh38.fna ~/WGS_Work_Flow/ReadsData/sra_data.fastq | samtools view -S -b - > Humen.bam
+
+# 将BAM文件排序
+samtools sort Humen.bam Humen_sort.bam
+
+# 删除重复序列
+samtools rmdup -s  (rmdup for SE reads) Humen_sort.bam Humen_sort_markdup.bam
+
+或者
+
+java -jar picard.jar MarkDuplicates \
+REMOVE_DUPLICATES=true \
+I=ReadsData/458QcMappingSort.bam \
+O=ReadsData/458QMSD.bam \
+M=ReadsData/458QMSDMeticx.txt 
+
+# 对最终BAM文件建立索引
+samtools index Humen_sort_markdup.bam
+
+# 为人类染色体fasta文件建立fai索引
+samtools faidx data.fasta
+
+
+
+### 二、变异检测（Google deepvariant）
+# 建立图片
+python bin/make_examples.zip \
+  --mode calling   \
+  --ref "${REF}"   \ #参照基因序列的fasta文件
+  --reads "${BAM}" \ #比对之后的BAM文件
+  --examples "${OUTPUT_DIR}/examples.tfrecord.gz" #输出
+# 检测变异
+python bin/call_variants.zip \
+ --outfile "${CALL_VARIANTS_OUTPUT}" \ #输出文件
+ --examples "${OUTPUT_DIR}/examples.tfrecord@${N_SHARDS}.gz" \ #上一步输出的文件
+ --checkpoint "${MODEL}" #模型参数
+# 格式转换
+python bin/postprocess_variants.zip \
+  --ref "${REF}" \  #参照基因序列的fasta文件
+  --infile "${CALL_VARIANTS_OUTPUT}" \ #上一步输出的文件
+  --outfile "${FINAL_OUTPUT_VCF}" #最终输出VCF文件
+
+
+### GATK 工具 ：
+### 对参考基因组创建dict文件
+java -jar picard.jar CreateSequenceDictionary R=hg38/GRCh38.fasta O=hg38/GRCh38.dict
+
+
+### GATK局部重比对操作
+
+# 1、Normal sample 没有已知数据做对比
+java -jar GenomeAnalysisTK.jar  -T RealignerTargetCreator  -R hg38/GRCh38.fasta  -I NormalMSD.bam    -o Normal.IndelRealigner.intervals
+
+# 2、
+java -jar GenomeAnalysisTK.jar  -T IndelRealigner  -R hg38/GRCh38.fasta  -I NormalMSD.bam   -o NormalMSDR.bam  --targetIntervals Normal.IndelRealigner.intervals
+
+# 1、Tumor sample  有已知数据做对比 （已知数据可以去GATK的仓库下载，一定要注意对应的参考基因组序列）
+java -jar /path/to/GenomeAnalysisTK.jar \
+ -T RealignerTargetCreator \
+ -R /path/to/human.fasta \
+ -I sample_name.sorted.markdup.bam \
+ -known /path/to/gatk/bundle/1000G_phase1.indels.b37.vcf \
+ -known /path/to/gatk/bundle/Mills_and_1000G_gold_standard.indels.b37.vcf \
+ -o sample_name.IndelRealigner.intervals
+
+ # 2、
+java -jar /path/to/GenomeAnalysisTK.jar \
+ -T IndelRealigner \
+ -R /path/to/human.fasta \
+ -I sample_name.sorted.markdup.bam \
+ -known /path/to/gatk/bundle/1000G_phase1.indels.b37.vcf \
+ -known /path/to/gatk/bundle/Mills_and_1000G_gold_standard.indels.b37.vcf \
+ -o sample_name.sorted.markdup.realign.bam \
+ --targetIntervals sample_name.IndelRealigner.intervals
+
+
+
+### GATK碱基质量分数矫正
+
+# 1、
+java -jar GATK/GenomeAnalysisTK.jar -T BaseRecalibrator -R hg19/hg19.fasta \
+ -I NormalMSDI.bam \
+ -knownSites hg19/1000G_phase1.indels.hg19.vcf \
+ -knownSites hg19/Mills_and_1000G_gold_standard.indels.hg19.vcf \
+ -knownSites hg19/dbsnp_138.hg19.vcf \
+ -o Normal.table
+
+ # 2、
+java -jar GATK/GenomeAnalysisTK.jar -T PrintReads -R hg19/hg19.fasta -I TumoralMSDI.bam  -BQSR Tumoral.table -o TumoralMSDIB.bam 
+
+
+
+### SNV变异检测 （NeuSomatic 罗氏文章）
+
+# 1、
+python neusomatic-master/neusomatic/python/preprocess.py --mode call --reference hg19/hg19.fasta --region neusomatic-master/resources/hg19.bed --tumor_bam TumoralMSDIBSC.bam --normal_bam NormalMSDIBSC.bam --work work_call --min_mapq 10 --scan_alignments_binary neusomatic-master/neusomatic/bin/scan_alignments 
+
+# 2、
+python neusomatic-master/neusomatic/python/call.py --candidates_tsv work_call/dataset/*/candidates*.tsv --reference hg19/hg19.fasta --out work_call --checkpoint neusomatic-master/neusomatic/models/NeuSomatic_v0.1.0_standalone_WEX_100purity.pth --batch_size 100
+
+# 3、
+python neusomatic-master/neusomatic/python/postprocess.py --reference hg19/hg19.fasta --tumor_bam TumoralMSDIBSC.bam  --pred_vcf work_call/pred.vcf --candidates_vcf work_call/work_tumor/filtered_candidates.vcf --output_vcf work_call/NeuSomaticThis.vcf --work work_call
+
+
+
+
+
+
+
