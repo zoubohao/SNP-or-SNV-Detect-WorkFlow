@@ -9,9 +9,19 @@ fastqc reads.fastq
 
 ##trimmo去除测序质量低的序列和接头序列（分PE（pair end ）和SE(single end)模式）-phred33 -phred64代表测序质量，现在一般用33：
 
-PE   :   java -jar trimmomatic.jar PE -phred33 ../WGS_Work_Flow/ReadsData/R1.fastq  ../WGS_Work_Flow/ReadsData/R2.fastq  ../WGS_Work_Flow/ReadsData/outR1.fastq.gz  ../WGS_Work_Flow/ReadsData/outR1Trimm.fastq.gz  ../WGS_Work_Flow/ReadsData/outR2.fastq.gz  ../WGS_Work_Flow/ReadsData/outR2Trimm.fastq.gz  ILLUMINACLIP:adapters/TruSeq3-PE.fa:2:30:10 SLIDINGWINDOW:5:20 LEADING:5 TRAILING:5 MINLEN:50 
+PE   :   java -jar trimmomatic.jar PE -phred33 \
+../WGS_Work_Flow/ReadsData/R1.fastq  \
+../WGS_Work_Flow/ReadsData/R2.fastq  \
+../WGS_Work_Flow/ReadsData/outR1.fastq.gz  \
+../WGS_Work_Flow/ReadsData/outR1Trimm.fastq.gz  \
+../WGS_Work_Flow/ReadsData/outR2.fastq.gz  \
+../WGS_Work_Flow/ReadsData/outR2Trimm.fastq.gz  \
+ILLUMINACLIP:adapters/TruSeq3-PE.fa:2:30:10 SLIDINGWINDOW:5:20 LEADING:5 TRAILING:5 MINLEN:50 
 
-SE   :   java -jar trimmomatic.jar SE -phred33 ../WGS_Work_Flow/ReadsData/R1.fastq   ../WGS_Work_Flow/ReadsData/outR1.fastq.gz ILLUMINACLIP:adapters/TruSeq3-SE.fa:2:30:10 SLIDINGWINDOW:5:20 LEADING:5 TRAILING:5 MINLEN:50 
+SE   :   java -jar trimmomatic.jar SE -phred33 \
+../WGS_Work_Flow/ReadsData/R1.fastq \
+../WGS_Work_Flow/ReadsData/outR1.fastq.gz \
+ILLUMINACLIP:adapters/TruSeq3-SE.fa:2:30:10 SLIDINGWINDOW:5:20 LEADING:5 TRAILING:5 MINLEN:50 
 
 
 
