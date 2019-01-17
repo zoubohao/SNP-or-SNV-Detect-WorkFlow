@@ -31,7 +31,9 @@ ILLUMINACLIP:adapters/TruSeq3-SE.fa:2:30:10 SLIDINGWINDOW:5:20 LEADING:5 TRAILIN
 bwa index HumenChromos.fasta
 
 # 将经过质量控制的reads映射到基因组上并输出BAM文件
-bwa mem -t 4 -R '@RG\tID:sra_data\tPL:illumina\tLB:Non\tSM:humen' ~/WGS_Work_Flow/ChromeIndexFiles/GRCh38.fna ~/WGS_Work_Flow/ReadsData/sra_data.fastq | samtools view -S -b - > Humen.bam
+bwa mem -t 4 -R '@RG\tID:sra_data\tPL:illumina\tLB:Non\tSM:humen' \
+~/WGS_Work_Flow/ChromeIndexFiles/GRCh38.fna \
+~/WGS_Work_Flow/ReadsData/sra_data.fastq | samtools view -S -b - > Humen.bam
 
 # 将BAM文件排序
 samtools sort Humen.bam Humen_sort.bam
@@ -82,10 +84,12 @@ java -jar picard.jar CreateSequenceDictionary R=hg38/GRCh38.fasta O=hg38/GRCh38.
 ### GATK局部重比对操作
 
 # 1、Normal sample 没有已知数据做对比
-java -jar GenomeAnalysisTK.jar  -T RealignerTargetCreator  -R hg38/GRCh38.fasta  -I NormalMSD.bam    -o Normal.IndelRealigner.intervals
+java -jar GenomeAnalysisTK.jar  -T RealignerTargetCreator  \
+-R hg38/GRCh38.fasta  -I NormalMSD.bam    -o Normal.IndelRealigner.intervals
 
 # 2、
-java -jar GenomeAnalysisTK.jar  -T IndelRealigner  -R hg38/GRCh38.fasta  -I NormalMSD.bam   -o NormalMSDR.bam  --targetIntervals Normal.IndelRealigner.intervals
+java -jar GenomeAnalysisTK.jar  -T IndelRealigner  -R hg38/GRCh38.fasta  \
+-I NormalMSD.bam   -o NormalMSDR.bam  --targetIntervals Normal.IndelRealigner.intervals
 
 # 1、Tumor sample  有已知数据做对比 （已知数据可以去GATK的仓库下载，一定要注意对应的参考基因组序列）
 java -jar /path/to/GenomeAnalysisTK.jar \
@@ -119,20 +123,38 @@ java -jar GATK/GenomeAnalysisTK.jar -T BaseRecalibrator -R hg19/hg19.fasta \
  -o Normal.table
 
  # 2、
-java -jar GATK/GenomeAnalysisTK.jar -T PrintReads -R hg19/hg19.fasta -I TumoralMSDI.bam  -BQSR Tumoral.table -o TumoralMSDIB.bam 
+java -jar GATK/GenomeAnalysisTK.jar -T PrintReads 
+-R hg19/hg19.fasta -I TumoralMSDI.bam  -BQSR Tumoral.table -o TumoralMSDIB.bam 
 
 
 
 ### SNV变异检测 （NeuSomatic 罗氏文章）
 
 # 1、
-python neusomatic-master/neusomatic/python/preprocess.py --mode call --reference hg19/hg19.fasta --region neusomatic-master/resources/hg19.bed --tumor_bam TumoralMSDIBSC.bam --normal_bam NormalMSDIBSC.bam --work work_call --min_mapq 10 --scan_alignments_binary neusomatic-master/neusomatic/bin/scan_alignments 
+python neusomatic-master/neusomatic/python/preprocess.py --mode call \
+--reference hg19/hg19.fasta \
+--region neusomatic-master/resources/hg19.bed \
+--tumor_bam TumoralMSDIBSC.bam \
+--normal_bam NormalMSDIBSC.bam \
+--work work_call \
+--min_mapq 10 \
+--scan_alignments_binary neusomatic-master/neusomatic/bin/scan_alignments 
 
 # 2、
-python neusomatic-master/neusomatic/python/call.py --candidates_tsv work_call/dataset/*/candidates*.tsv --reference hg19/hg19.fasta --out work_call --checkpoint neusomatic-master/neusomatic/models/NeuSomatic_v0.1.0_standalone_WEX_100purity.pth --batch_size 100
+python neusomatic-master/neusomatic/python/call.py 
+--candidates_tsv work_call/dataset/*/candidates*.tsv 
+--reference hg19/hg19.fasta 
+--out work_call 
+--checkpoint neusomatic-master/neusomatic/models/NeuSomatic_v0.1.0_standalone_WEX_100purity.pth 
+--batch_size 100
 
 # 3、
-python neusomatic-master/neusomatic/python/postprocess.py --reference hg19/hg19.fasta --tumor_bam TumoralMSDIBSC.bam  --pred_vcf work_call/pred.vcf --candidates_vcf work_call/work_tumor/filtered_candidates.vcf --output_vcf work_call/NeuSomaticThis.vcf --work work_call
+python neusomatic-master/neusomatic/python/postprocess.py 
+--reference hg19/hg19.fasta 
+--tumor_bam TumoralMSDIBSC.bam  
+--pred_vcf work_call/pred.vcf 
+--candidates_vcf work_call/work_tumor/filtered_candidates.vcf 
+--output_vcf work_call/NeuSomaticThis.vcf --work work_call
 
 
 
